@@ -29,6 +29,8 @@ namespace vi = std::views;
 
 namespace chil::app
 {
+	CheckerToken chk;
+
 	HrGrabber::HrGrabber(unsigned int hr, std::source_location loc) noexcept
 		:
 		hr(hr),
