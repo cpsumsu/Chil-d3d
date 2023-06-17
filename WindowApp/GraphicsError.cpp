@@ -38,18 +38,16 @@ namespace chil::app
 	{}
 	void operator>>(HrGrabber g, CheckerToken)
 	{
-		if (FAILED(g.hr))
-		{
+		if (FAILED(g.hr)) {
 			// get error description as narrow string with crlf removed
 			auto errorString = utl::ToNarrow(win::GetErrorDescription(g.hr)) |
 				vi::transform([](char c) {return c == '\n' ? ' ' : c; }) |
 				vi::filter([](char c) {return c != '\r'; }) |
 				rn::to<std::basic_string>();
-
-			throw std::runtime_error(
-				std::format("Graphic Error: {} \n	{}({})",
-					errorString, g.loc.file_name(), g.loc.line()
-			));
+			throw std::runtime_error{
+				std::format("Graphics Error: {}\n   {}({})",
+				errorString, g.loc.file_name(), g.loc.line())
+			};
 		}
 	}
 }
