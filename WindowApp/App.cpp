@@ -7,6 +7,7 @@
 #include <wrl.h>
 #include <dxgi1_6.h> // This header is used by DXGI. For more informati see 
 #include "d3dx12.h"
+#include <d3dcompiler.h>
 // https://learn.microsoft.com/en-us/windows/win32/api/_direct3ddxgi/
 
 #include <cmath>
@@ -299,9 +300,61 @@ namespace chil::app
 				}
 				hr >> chk;
 			}
+			// Create Root Signature
 			devices->CreateRootSignature(0, signatureBlob->GetBufferPointer(),
 				signatureBlob->GetBufferSize(), IID_PPV_ARGS(&rootSignature)) >> chk;
 		}
+
+		// create pipeline state object
+		ComPtr<ID3D12PipelineState> pipelineState;
+		{
+			struct PipelineStateStream
+			{
+				CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE RootSignature;
+				CD3DX12_PIPELINE_STATE_STREAM_INPUT_LAYOUT InputLayout;
+				CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
+				CD3DX12_PIPELINE_STATE_STREAM_VS VS;
+				CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+				CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+			} pipelineStateStream;
+
+			// define the Vertex input layout
+			const D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+				{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA},
+				{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA}
+			};
+
+			// Load the vertex shader
+			ComPtr<ID3D10Blob> vertexShaderBlob;
+			D3DReadFileToBlob(L"VertexShader.cso", &vertexShaderBlob) >> chk;
+
+			// Load the pixel shader
+			ComPtr<ID3D10Blob> pixelShaderBlob;
+			D3DReadFileToBlob(L"PixelShader.cso", &pixelShaderBlob) >> chk;
+
+			// filling pso structure
+			pipelineStateStream.RootSignature = rootSignature.Get();
+			pipelineStateStream.InputLayout = { inputLayout, (UINT)std::size(inputLayout) };
+			pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			pipelineStateStream.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+			pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+			pipelineStateStream.RTVFormats = {
+				.RTFormats{ DXGI_FORMAT_R8G8B8A8_UNORM },
+				.NumRenderTargets = 1,
+			};
+
+			// building the position state object
+			const D3D12_PIPELINE_STATE_STREAM_DESC pipelineStateStreamDesc = {
+				sizeof(pipelineStateStream),&pipelineStateStream
+			};
+			devices->CreatePipelineState(&pipelineStateStreamDesc, IID_PPV_ARGS(&pipelineState)) >> chk;
+		}
+
+		// define scissor rect 
+		const CD3DX12_RECT scissorRect{ 0, 0, LONG_MAX, LONG_MAX };
+
+		// define viewport 
+		const CD3DX12_VIEWPORT viewport{ 0.0f, 0.0f, float(width), float(height) };
 
 		// render loop
 		UINT curBackBufferIndex;
@@ -315,6 +368,10 @@ namespace chil::app
 			auto& backBuffer = backBuffers[curBackBufferIndex];
 			commandAllocator->Reset() >> chk;
 			commandList->Reset(commandAllocator.Get(),nullptr) >> chk;
+			// get rtv handle for the buffer used in this frame
+			const CD3DX12_CPU_DESCRIPTOR_HANDLE rtv{
+					rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+					(INT)curBackBufferIndex, rtvDescriptorSize };
 			// clear the render target
 			{
 				// transition buffer resource to render target state
@@ -334,13 +391,23 @@ namespace chil::app
 					1.0f 
 				};
 
-
-
-				const CD3DX12_CPU_DESCRIPTOR_HANDLE rtv{
-					rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-					(INT)curBackBufferIndex, rtvDescriptorSize };
+				// clear rtv
 				commandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
 			}
+			// set pipeline state
+			commandList->SetPipelineState(pipelineState.Get());
+			commandList->SetGraphicsRootSignature(rootSignature.Get());
+			// configure IA
+			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+			// configure RS
+			commandList->RSSetScissorRects(1, &scissorRect);
+			commandList->RSSetViewports(1, &viewport);
+			// bind render target 
+			commandList->OMSetRenderTargets(1, &rtv, TRUE, nullptr);
+			//  draw the geometry 
+			commandList->DrawInstanced(nVertices, 1, 0, 0);
+
 			// prepare buffer for presentation
 			{
 				const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
