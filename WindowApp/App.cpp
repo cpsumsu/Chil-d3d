@@ -1,6 +1,7 @@
 #include "App.h"
 #include "GraphicsError.h"
-
+#include <Core/src/log/Log.h>
+#include <Core/src/utl/String.h>
 
 #include <d3d12.h>
 #include <wrl.h>
@@ -278,6 +279,29 @@ namespace chil::app
 			.SizeInBytes = nVertices * sizeof(Vertex),
 			.StrideInBytes = sizeof(Vertex)
 		};
+
+		// create root signature
+		ComPtr<ID3D12RootSignature> rootSignature;
+		{
+			// define empty root signature
+			CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+			rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+			// serizlize root signature
+			ComPtr<ID3DBlob> signatureBlob;
+			ComPtr<ID3DBlob> errorBlob;
+			if (const auto hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+				&signatureBlob, &errorBlob); FAILED(hr))
+			{
+				if (errorBlob)
+				{
+					auto errorBufferPtr = static_cast<const char*>(errorBlob->GetBufferPointer());
+					chilog.error(utl::ToWide(errorBufferPtr)).no_trace();
+				}
+				hr >> chk;
+			}
+			devices->CreateRootSignature(0, signatureBlob->GetBufferPointer(),
+				signatureBlob->GetBufferSize(), IID_PPV_ARGS(&rootSignature)) >> chk;
+		}
 
 		// render loop
 		UINT curBackBufferIndex;
