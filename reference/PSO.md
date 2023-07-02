@@ -6,8 +6,11 @@
 
 # Root signature
 
-# Pipeline State Object
+![](pic/image.png)
+![](https://cdn.discordapp.com/attachments/894788659356794880/1125040421609951262/image.png)
 
+# Pipeline State Object
+![Alt text](pic/螢幕擷取畫面%202023-07-01%20112950.png)
 PSO(Pipeline State Object)是Direct3D 12中重要的概念。它封装了渲染管线中的多个状态，包括:
 - 顶点着色器和像素着色器
 - 栅格化状态(多样本抗锯齿、缓存模式等)
