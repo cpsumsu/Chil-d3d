@@ -284,9 +284,15 @@ namespace chil::app
 		// create root signature
 		ComPtr<ID3D12RootSignature> rootSignature;
 		{
+			// 2023/07/02: define root signature with a matrix of 16 32-bit floats used by the vertex shader (rotation matrix)
+			CD3DX12_ROOT_PARAMETER rootParameters[1]{};
+			rootParameters[0].InitAsConstants(sizeof(XMMATRIX) / 4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+
 			// define empty root signature
+			// 2023/07/02: define root signature with transformation matrix
 			CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-			rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+			rootSignatureDesc.Init((UINT)std::size(rootParameters), rootParameters,
+				0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 			// serizlize root signature
 			ComPtr<ID3DBlob> signatureBlob;
 			ComPtr<ID3DBlob> errorBlob;
@@ -320,8 +326,8 @@ namespace chil::app
 
 			// define the Vertex input layout
 			const D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-				{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA},
-				{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA}
+				{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 			};
 
 			// Load the vertex shader
@@ -405,7 +411,15 @@ namespace chil::app
 			commandList->RSSetViewports(1, &viewport);
 			// bind render target 
 			commandList->OMSetRenderTargets(1, &rtv, TRUE, nullptr);
-			//  draw the geometry 
+			// bind the transformation matrix
+			// XMMatrixRotationZ
+			// XMMatrixRotationY
+			// XMMatrixRotationX
+			const auto rotationmartix = XMMatrixTranspose(XMMatrixRotationZ(t));
+			commandList->SetGraphicsRoot32BitConstants(0, sizeof(rotationmartix) / 4, &rotationmartix, 0);
+
+
+			// draw the geometry 
 			commandList->DrawInstanced(nVertices, 1, 0, 0);
 
 			// prepare buffer for presentation

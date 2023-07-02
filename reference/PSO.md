@@ -6,8 +6,11 @@
 
 # Root signature
 
+> [example-root-signatures](https://learn.microsoft.com/en-us/windows/win32/direct3d12/example-root-signatures)
+
 ![](pic/image.png)
 ![](https://cdn.discordapp.com/attachments/894788659356794880/1125040421609951262/image.png)
+![](https://cdn.discordapp.com/attachments/894788659356794880/1125041062587674665/image.png)
 
 # Pipeline State Object
 ![Alt text](pic/螢幕擷取畫面%202023-07-01%20112950.png)
