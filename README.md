@@ -10,8 +10,27 @@
 - [Swapchain的概念](https://zhuanlan.zhihu.com/p/104244526)
 - [DirectX12学习笔记](https://www.zhihu.com/search?type=content&q=dirextx12)
 
-# 知識點補充
-- [甚麼是PSO?](reference/PSO.md)
+# D3D12 基礎結構 (順序構成)
+- Factory dxgi D3D12
+- Devices D3D12
+- [Command Queue (命令隊列)](reference/CommandQueue.md)
+- [swap chain](reference/swap_chain.md)
+- rtv descriptor heap
+- [Command allocator](reference/CommandAllocator.md)
+- Command list
+- [fence](reference/fence.md)
+- Vertex data
+- Vertex buffer
+  - INIT content data
+  - create commited resource cpu upload for vertex data
+  - Copy array of vertex data to upload buffer
+  - reset allocator and list
+- Create the Vertex buffer view (CPU)
+- Root signature
+- [PSO](reference/PSO.md)
+- scissor rect
+- projection martix
+- render loop
 
 # 參考資料
 - [d3d12-shallow](https://github.com/planetchili/d3d12-shallow/tree/master)
