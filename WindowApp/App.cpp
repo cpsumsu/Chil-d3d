@@ -158,6 +158,44 @@ namespace chil::app
 			}
 		}
 
+		// depth buffer
+		ComPtr<ID3D12Resource> depthBuffer;
+		{
+			const CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+			const CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+				DXGI_FORMAT_D32_FLOAT,
+				width, height,
+				1, 0, 1, 0,
+				D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+			const D3D12_CLEAR_VALUE clearValue = {
+				.Format = DXGI_FORMAT_D32_FLOAT,
+				.DepthStencil = { 1.0f, 0 },
+			};
+			devices->CreateCommittedResource(
+				&heapProperties,
+				D3D12_HEAP_FLAG_NONE,
+				&desc,
+				D3D12_RESOURCE_STATE_DEPTH_WRITE,
+				&clearValue,
+				IID_PPV_ARGS(&depthBuffer)) >> chk;
+		}
+
+		// dev descriptor heap
+		ComPtr<ID3D12DescriptorHeap> dsvDescriptorHeap;
+		{
+			const D3D12_DESCRIPTOR_HEAP_DESC desc = {
+				.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
+				.NumDescriptors = 1
+			};
+			devices->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&dsvDescriptorHeap)) >> chk;
+		}
+
+		// dsv and handle 
+		const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle{
+			dsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart()
+		};
+		devices->CreateDepthStencilView(depthBuffer.Get(), nullptr, dsvHandle);
+
 		// Command allocator
 		// https://learn.microsoft.com/en-us/windows/win32/direct3d12/recording-command-lists-and-bundles
 		// 命令分配器允許應用程序管理為命令列表分配的內存。命令分配器是通過調用CreateCommandAllocator創建的。創建命令列表時，分配器的命令列表類型（由D3D12_COMMAND_LIST_TYPE指定）必須與正在創建的命令列表的類型相匹配。給定的分配器一次只能與一個當前記錄的命令列表相關聯，儘管一個命令分配器可用於創建任意數量的GraphicsCommandList對象。
@@ -414,6 +452,7 @@ namespace chil::app
 				CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopologyType;
 				CD3DX12_PIPELINE_STATE_STREAM_VS VS;
 				CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+				CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
 				CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
 			} pipelineStateStream;
 
@@ -437,6 +476,7 @@ namespace chil::app
 			pipelineStateStream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 			pipelineStateStream.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
 			pipelineStateStream.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+			pipelineStateStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 			pipelineStateStream.RTVFormats = {
 				.RTFormats{ DXGI_FORMAT_R8G8B8A8_UNORM },
 				.NumRenderTargets = 1,
@@ -507,6 +547,9 @@ namespace chil::app
 				// clear rtv
 				commandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
 			}
+			// clear the depth buffer 
+			commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
 			// set pipeline state
 			commandList->SetPipelineState(pipelineState.Get());
 			commandList->SetGraphicsRootSignature(rootSignature.Get());
@@ -517,8 +560,8 @@ namespace chil::app
 			// configure RS
 			commandList->RSSetScissorRects(1, &scissorRect);
 			commandList->RSSetViewports(1, &viewport);
-			// bind render target 
-			commandList->OMSetRenderTargets(1, &rtv, TRUE, nullptr);
+			// bind render target and dsv handle (depth)
+			commandList->OMSetRenderTargets(1, &rtv, TRUE, &dsvHandle);
 			// bind the transformation matrix
 			// XMMatrixRotationZ
 			// XMMatrixRotationY
@@ -540,9 +583,9 @@ namespace chil::app
 			{
 				// bind the transformation matrix 
 				const auto mvp = XMMatrixTranspose(
-					XMMatrixRotationX(-1.0f * t - 1.f) *
-					XMMatrixRotationY(-1.2f * t - 2.f) *
-					XMMatrixRotationZ(-1.1f * t - 0.f) *
+					XMMatrixRotationX(-1.0f * t + 1.f) *
+					XMMatrixRotationY(-1.2f * t + 2.f) *
+					XMMatrixRotationZ(-1.1f * t + 0.f) *
 					viewProjection
 				);
 				commandList->SetGraphicsRoot32BitConstants(0, sizeof(mvp) / 4, &mvp, 0);
