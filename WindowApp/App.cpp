@@ -233,7 +233,6 @@ namespace chil::app
 		struct Vertex
 		{
 			XMFLOAT3 position;
-			XMFLOAT3 color;
 		};
 
 		// create Vertex buffer
@@ -242,14 +241,14 @@ namespace chil::app
 		{
 			// the content data 
 			const Vertex vertexData[] = {
-				{ {-1.0f, -1.0f, -1.0f}, {0.0f, 0.0f, 0.0f} }, // 0 
-				{ {-1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f} }, // 1 
-				{ {1.0f,  1.0f, -1.0f}, {1.0f, 1.0f, 0.0f} }, // 2 
-				{ {1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 0.0f} }, // 3 
-				{ {-1.0f, -1.0f,  1.0f}, {0.0f, 0.0f, 1.0f} }, // 4 
-				{ {-1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 1.0f} }, // 5 
-				{ {1.0f,  1.0f,  1.0f}, {1.0f, 1.0f, 1.0f} }, // 6 
-				{ {1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 1.0f} }  // 7 
+				{ {-1.0f, -1.0f, -1.0f}}, // 0 
+				{ {-1.0f,  1.0f, -1.0f}}, // 1 
+				{ {1.0f,  1.0f, -1.0f}}, // 2 
+				{ {1.0f, -1.0f, -1.0f}}, // 3 
+				{ {-1.0f, -1.0f,  1.0f}}, // 4 
+				{ {-1.0f,  1.0f,  1.0f}}, // 5 
+				{ {1.0f,  1.0f,  1.0f}}, // 6 
+				{ {1.0f, -1.0f,  1.0f}}  // 7 
 			};
 			
 			// set the vertex count
@@ -401,13 +400,75 @@ namespace chil::app
 			.Format = DXGI_FORMAT_R16_UINT
 		};
 
+		// Create constant buffer for cube face colors
+		ComPtr<ID3D12Resource> faceColorBuffer;
+		{
+			const XMFLOAT4 faceColors[] = {
+				{1.f, 0.f, 0.f, 1.f},
+				{0.f, 1.f, 0.f, 1.f},
+				{0.f, 0.f, 1.f, 1.f},
+				{1.f, 0.f, 1.f, 1.f},
+				{0.f, 1.f, 1.f, 1.f},
+				{1.f, 1.f, 0.f, 1.f},
+			};
+			// create committed resource for constant buffer  
+			{
+				const CD3DX12_HEAP_PROPERTIES heapProps{ D3D12_HEAP_TYPE_DEFAULT };
+				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(faceColors));
+				devices->CreateCommittedResource(
+					&heapProps,
+					D3D12_HEAP_FLAG_NONE,
+					&resourceDesc,
+					D3D12_RESOURCE_STATE_COPY_DEST,
+					nullptr, IID_PPV_ARGS(&faceColorBuffer)
+				) >> chk;
+			}
+			// create committed resource for cpu upload of constant data  
+			ComPtr<ID3D12Resource> faceColorUploadBuffer;
+			{
+				const CD3DX12_HEAP_PROPERTIES heapProps{ D3D12_HEAP_TYPE_UPLOAD };
+				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(faceColors));
+				devices->CreateCommittedResource(
+					&heapProps,
+					D3D12_HEAP_FLAG_NONE,
+					&resourceDesc,
+					D3D12_RESOURCE_STATE_GENERIC_READ,
+					nullptr, IID_PPV_ARGS(&faceColorUploadBuffer)
+				) >> chk;
+			}
+			// copy array of color data to upload buffer  
+			{
+				XMFLOAT4* mappedFaceColorData = nullptr;
+				faceColorUploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&mappedFaceColorData)) >> chk;
+				rn::copy(faceColors, mappedFaceColorData);
+				faceColorUploadBuffer->Unmap(0, nullptr);
+			}
+			// reset command list and allocator   
+			commandAllocator->Reset() >> chk;
+			commandList->Reset(commandAllocator.Get(), nullptr) >> chk;
+			// copy upload buffer to face color buffer  
+			commandList->CopyResource(faceColorBuffer.Get(), faceColorUploadBuffer.Get());
+			// close command list   
+			commandList->Close() >> chk;
+			// submit command list to queue as array with single element  
+			ID3D12CommandList* const commandLists[] = { commandList.Get() };
+			commandQueue->ExecuteCommandLists((UINT)std::size(commandLists), commandLists);
+			// insert fence to detect when upload is complete  
+			commandQueue->Signal(fence.Get(), ++fenceValue) >> chk;
+			fence->SetEventOnCompletion(fenceValue, fenceEvent) >> chk;
+			if (WaitForSingleObject(fenceEvent, INFINITE) == WAIT_FAILED) {
+				GetLastError() >> chk;
+			}
+		}
+
 		// create root signature
 		ComPtr<ID3D12RootSignature> rootSignature;
 		{
 			// 2023/07/02: define root signature with a matrix of 16 32-bit floats used by the vertex shader (rotation matrix)
 			// 2023/07/02 ss: define root signature with a matrix of 16 32-bit floats used by the vertex shader (mvp matrix) 
-			CD3DX12_ROOT_PARAMETER rootParameters[1]{};
+			CD3DX12_ROOT_PARAMETER rootParameters[2]{};
 			rootParameters[0].InitAsConstants(sizeof(XMMATRIX) / 4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+			rootParameters[1].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 			// Allow input layout and vertex shader and deny unnecessary access to certain pipeline stages.
 			const D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
 				D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -415,8 +476,7 @@ namespace chil::app
 				D3D12_ROOT_SIGNATURE_FLAG_DENY_AMPLIFICATION_SHADER_ROOT_ACCESS |
 				D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
 				D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-				D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-				D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+				D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
 			// define empty root signature
 			// 2023/07/02: define root signature with transformation matrix
@@ -458,8 +518,7 @@ namespace chil::app
 
 			// define the Vertex input layout
 			const D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-				{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-				{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+				{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 			};
 
 			// Load the vertex shader
@@ -560,6 +619,8 @@ namespace chil::app
 			// configure RS
 			commandList->RSSetScissorRects(1, &scissorRect);
 			commandList->RSSetViewports(1, &viewport);
+			// bind the face color constant buffer
+			commandList->SetGraphicsRootConstantBufferView(1, faceColorBuffer->GetGPUVirtualAddress());
 			// bind render target and dsv handle (depth)
 			commandList->OMSetRenderTargets(1, &rtv, TRUE, &dsvHandle);
 			// bind the transformation matrix
