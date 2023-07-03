@@ -463,7 +463,7 @@ namespace chil::app
 			commandList->Reset(commandAllocator.Get(), nullptr) >> chk;
 			// copy upload buffer to face color buffer  
 			commandList->CopyResource(faceColorBuffer.Get(), faceColorUploadBuffer.Get());
-			// transition index buffer to index buffer state 
+			// transition face color buffer to index buffer state 
 			{
 				const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
 					faceColorBuffer.Get(),

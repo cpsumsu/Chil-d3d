@@ -16,6 +16,9 @@
 - [Command Queue (命令隊列)](reference/CommandQueue.md)
 - [swap chain](reference/swap_chain.md)
 - rtv descriptor heap
+- depth buffer (2023/07/03)
+- dev descriptor heap (2023/07/03)
+- dsv and handle (2023/07/03)
 - [Command allocator](reference/CommandAllocator.md)
 - Command list
 - [fence](reference/fence.md)
@@ -26,11 +29,16 @@
   - Copy array of vertex data to upload buffer
   - reset allocator and list
 - Create the Vertex buffer view (CPU)
+- index buffer (2023/07/03)
+- index buffer view (2023/07/03)
 - Root signature
 - [PSO](reference/PSO.md)
 - scissor rect
 - projection martix
 - render loop
+
+# hlsl代碼詳解
+- [hlsl_cube](hlsl_example/hlsl_cube.md)
 
 # 參考資料
 - [d3d12-shallow](https://github.com/planetchili/d3d12-shallow/tree/master)
