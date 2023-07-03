@@ -70,9 +70,10 @@ namespace chil::app
 
 		// Enable the software debug layer for d3d12
 		{
-			ComPtr<ID3D12Debug> debugController;
+			ComPtr<ID3D12Debug1> debugController;
 			D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)) >> chk;
 			debugController->EnableDebugLayer();
+			debugController->SetEnableGPUBasedValidation(true);
 		}
 
 		// Factory dxgi D3D12
@@ -299,6 +300,13 @@ namespace chil::app
 			commandList->Reset(commandAllocator.Get(), nullptr) >> chk;
 			// copy upload buffer to vertex buffer
 			commandList->CopyResource(vertexBuffer.Get(), vertexUploadBuffer.Get());
+			// transition vertex buffer to vertex buffer state 
+			{
+				const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+					vertexBuffer.Get(),
+					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+				commandList->ResourceBarrier(1, &barrier);
+			}
 			// close commandList
 			commandList->Close() >> chk;
 			// submit command list to queue as arry with single element
@@ -377,6 +385,13 @@ namespace chil::app
 			commandList->Reset(commandAllocator.Get(), nullptr) >> chk;
 			// copy upload buffer to index buffer
 			commandList->CopyResource(indexBuffer.Get(), indexUploadBuffer.Get());
+			// transition index buffer to index buffer state 
+			{
+				const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+					indexBuffer.Get(),
+					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+				commandList->ResourceBarrier(1, &barrier);
+			}
 			// close commandList
 			commandList->Close() >> chk;
 			// submit command list to queue as arry with single element
@@ -448,6 +463,13 @@ namespace chil::app
 			commandList->Reset(commandAllocator.Get(), nullptr) >> chk;
 			// copy upload buffer to face color buffer  
 			commandList->CopyResource(faceColorBuffer.Get(), faceColorUploadBuffer.Get());
+			// transition index buffer to index buffer state 
+			{
+				const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+					faceColorBuffer.Get(),
+					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+				commandList->ResourceBarrier(1, &barrier);
+			}
 			// close command list   
 			commandList->Close() >> chk;
 			// submit command list to queue as array with single element  
