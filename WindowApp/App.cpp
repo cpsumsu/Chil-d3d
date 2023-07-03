@@ -523,17 +523,32 @@ namespace chil::app
 			// XMMatrixRotationZ
 			// XMMatrixRotationY
 			// XMMatrixRotationX
-			/*const auto mvp = XMMatrixTranspose(XMMatrixRotationZ(t)* viewProjection);*/
-			const auto mvp = XMMatrixTranspose(
-				XMMatrixRotationX(1.0f * t + 1.0f) *
-				XMMatrixRotationY(1.2f * t + 2.0f) *
-				XMMatrixRotationZ(1.1f * t + 3.0f) *
-				viewProjection
-			);
-			commandList->SetGraphicsRoot32BitConstants(0, sizeof(mvp) / 4, &mvp, 0);
-
-			// draw the geometry 
-			commandList->DrawIndexedInstanced(nIndices, 1, 0, 0, 0);
+			// draw cube #1 
+			{
+				// bind the transformation matrix 
+				const auto mvp = XMMatrixTranspose(
+					XMMatrixRotationX(1.0f * t + 1.f) *
+					XMMatrixRotationY(1.2f * t + 2.f) *
+					XMMatrixRotationZ(1.1f * t + 0.f) *
+					viewProjection
+				);
+				commandList->SetGraphicsRoot32BitConstants(0, sizeof(mvp) / 4, &mvp, 0);
+				// draw the geometry  
+				commandList->DrawIndexedInstanced(nIndices, 1, 0, 0, 0);
+			}
+			// draw cube #2
+			{
+				// bind the transformation matrix 
+				const auto mvp = XMMatrixTranspose(
+					XMMatrixRotationX(-1.0f * t - 1.f) *
+					XMMatrixRotationY(-1.2f * t - 2.f) *
+					XMMatrixRotationZ(-1.1f * t - 0.f) *
+					viewProjection
+				);
+				commandList->SetGraphicsRoot32BitConstants(0, sizeof(mvp) / 4, &mvp, 0);
+				// draw the geometry  
+				commandList->DrawIndexedInstanced(nIndices, 1, 0, 0, 0);
+			}
 
 			// prepare buffer for presentation
 			{
