@@ -204,9 +204,14 @@ namespace chil::app
 		{
 			// the content data 
 			const Vertex vertexData[] = {
-				{ {  0.00f,  0.50f, 0.0f }, { 1.0f, 0.0f, 0.0f } }, // top 
-				{ {  0.43f, -0.25f, 0.0f }, { 0.0f, 0.0f, 1.0f } }, // right 
-				{ { -0.43f, -0.25f, 0.0f }, { 0.0f, 1.0f, 0.0f } }, // left 
+				{ {-1.0f, -1.0f, -1.0f}, {0.0f, 0.0f, 0.0f} }, // 0 
+				{ {-1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f} }, // 1 
+				{ {1.0f,  1.0f, -1.0f}, {1.0f, 1.0f, 0.0f} }, // 2 
+				{ {1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 0.0f} }, // 3 
+				{ {-1.0f, -1.0f,  1.0f}, {0.0f, 0.0f, 1.0f} }, // 4 
+				{ {-1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 1.0f} }, // 5 
+				{ {1.0f,  1.0f,  1.0f}, {1.0f, 1.0f, 1.0f} }, // 6 
+				{ {1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 1.0f} }  // 7 
 			};
 			
 			// set the vertex count
@@ -279,6 +284,83 @@ namespace chil::app
 			.BufferLocation = vertexBuffer->GetGPUVirtualAddress(),
 			.SizeInBytes = nVertices * sizeof(Vertex),
 			.StrideInBytes = sizeof(Vertex)
+		};
+
+		// Create index buffer
+		ComPtr<ID3D12Resource> indexBuffer;
+		UINT nIndices;
+		{
+			// the content data
+			const WORD indexData[] = {
+				0, 1, 2, 0, 2, 3,
+				4, 6, 5, 4, 7, 6,
+				4, 5, 1, 4, 1, 0,
+				3, 2, 6, 3, 6, 7,
+				1, 5, 6, 1, 6, 2,
+				4, 0, 3, 4, 3, 7
+			};
+
+			// set the vertex count
+			nIndices = (UINT)std::size(indexData);
+			{
+				const CD3DX12_HEAP_PROPERTIES heapProps{ D3D12_HEAP_TYPE_DEFAULT };
+				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(indexData));
+				devices->CreateCommittedResource(
+					&heapProps,
+					D3D12_HEAP_FLAG_NONE,
+					&resourceDesc,
+					D3D12_RESOURCE_STATE_COPY_DEST,
+					nullptr,
+					IID_PPV_ARGS(&indexBuffer)
+				) >> chk;
+			}
+			// create commited resource for cpu upload of index data
+			ComPtr<ID3D12Resource> indexUploadBuffer;
+			{
+				const CD3DX12_HEAP_PROPERTIES heapProps{ D3D12_HEAP_TYPE_UPLOAD };
+				const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(indexData));
+				devices->CreateCommittedResource(
+					&heapProps,
+					D3D12_HEAP_FLAG_NONE,
+					&resourceDesc,
+					D3D12_RESOURCE_STATE_GENERIC_READ,
+					nullptr,
+					IID_PPV_ARGS(&indexUploadBuffer)
+				) >> chk;
+			}
+			// copy array of index data to upload buffer 
+			{
+				WORD* mappedIndexData = nullptr;
+				indexUploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&mappedIndexData)) >> chk;
+				rn::copy(indexData, mappedIndexData);
+				indexUploadBuffer->Unmap(0, nullptr); // Upload OK
+			}
+			// reset allocator and list
+			commandAllocator->Reset() >> chk;
+			commandList->Reset(commandAllocator.Get(), nullptr) >> chk;
+			// copy upload buffer to index buffer
+			commandList->CopyResource(indexBuffer.Get(), indexUploadBuffer.Get());
+			// close commandList
+			commandList->Close() >> chk;
+			// submit command list to queue as arry with single element
+			ID3D12CommandList* const commandLists[] = { commandList.Get() };
+			commandQueue->ExecuteCommandLists((UINT)std::size(commandLists), commandLists);
+
+			// ？因為 CopyResouce 和關閉 CommandList 時間不一樣，需要設置 fence 等待
+			// inset fence to detect when upload is complete
+			commandQueue->Signal(fence.Get(), ++fenceValue) >> chk;
+			fence->SetEventOnCompletion(fenceValue, fenceEvent) >> chk;
+			if (WaitForSingleObject(fenceEvent, INFINITE) == WAIT_FAILED)
+			{
+				GetLastError() >> chk;
+			}
+		}
+
+		// Create the index buffer view
+		const D3D12_INDEX_BUFFER_VIEW indexBufferView{
+			.BufferLocation = indexBuffer->GetGPUVirtualAddress(),
+			.SizeInBytes = nVertices * sizeof(WORD),
+			.Format = DXGI_FORMAT_R16_UINT
 		};
 
 		// create root signature
@@ -377,7 +459,7 @@ namespace chil::app
 		XMMATRIX viewProjection;
 		{
 			// setup view (camera) matrix
-			const auto eyePosition = XMVectorSet(0, 0, -1, 1);
+			const auto eyePosition = XMVectorSet(0, 0, -6, 1);
 			const auto focusPoint = XMVectorSet(0, 0, 0, 1);
 			const auto upDirection = XMVectorSet(0, 1, 0, 0);
 			const auto view = XMMatrixLookAtLH(eyePosition, focusPoint, upDirection);
@@ -431,6 +513,7 @@ namespace chil::app
 			// configure IA
 			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 			commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+			commandList->IASetIndexBuffer(&indexBufferView); // 2023/07/03 
 			// configure RS
 			commandList->RSSetScissorRects(1, &scissorRect);
 			commandList->RSSetViewports(1, &viewport);
@@ -440,12 +523,17 @@ namespace chil::app
 			// XMMatrixRotationZ
 			// XMMatrixRotationY
 			// XMMatrixRotationX
-			const auto mvp = XMMatrixTranspose(XMMatrixRotationZ(t)* viewProjection);
+			/*const auto mvp = XMMatrixTranspose(XMMatrixRotationZ(t)* viewProjection);*/
+			const auto mvp = XMMatrixTranspose(
+				XMMatrixRotationX(1.0f * t + 1.0f) *
+				XMMatrixRotationY(1.2f * t + 2.0f) *
+				XMMatrixRotationZ(1.1f * t + 3.0f) *
+				viewProjection
+			);
 			commandList->SetGraphicsRoot32BitConstants(0, sizeof(mvp) / 4, &mvp, 0);
 
-
 			// draw the geometry 
-			commandList->DrawInstanced(nVertices, 1, 0, 0);
+			commandList->DrawIndexedInstanced(nIndices, 1, 0, 0, 0);
 
 			// prepare buffer for presentation
 			{
@@ -473,9 +561,7 @@ namespace chil::app
 			if (::WaitForSingleObject(fenceEvent, INFINITE) == WAIT_FAILED) {
 				GetLastError() >> chk;
 			}
-			if ((t += step) >= 2.f * std::numbers::pi_v<float>) {
-				t = 0.f;
-			}
+			t += step;
 		}
 
 		// wait for queue to become completely empty (2 seconds max) 
